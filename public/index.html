@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>直播源整合工具</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .input-group { margin: 10px 0; }
+        input[type="text"] { width: 80%; padding: 8px; }
+        button { padding: 8px 15px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        .add-btn { background: #28a745; }
+        #result { white-space: pre-wrap; background: #f8f9fa; padding: 15px; }
+    </style>
+</head>
+<body>
+    <h1>直播源整合工具</h1>
+    
+    <div class="section">
+        <h3>① 肥羊直播源</h3>
+        <div class="input-group">
+            <input type="text" id="feiyang-source" placeholder="输入肥羊直播源地址">
+        </div>
+    </div>
+
+    <div class="section">
+        <h3>② ITV项目直播源</h3>
+        <div class="input-group">
+            <input type="text" id="itv-source" placeholder="输入ITV项目地址">
+        </div>
+    </div>
+
+    <div class="section">
+        <h3>③ 其他直播源（点击+添加）</h3>
+        <div id="other-sources">
+            <div class="input-group">
+                <input type="text" placeholder="输入其他直播源地址">
+            </div>
+        </div>
+        <button class="add-btn" onclick="addSource()">+ 添加</button>
+    </div>
+
+    <button onclick="processSources()">生成整合源</button>
+    
+    <div class="section">
+        <h3>生成结果</h3>
+        <div id="result"></div>
+        <a id="m3u-link" style="display: none;" target="_blank">M3U播放地址</a>
+    </div>
+
+    <script>
+        // 提供的转换函数
+        function transformGroupNames(channelList, mapping) {
+            return channelList.map(function (channel) {
+                var newGroupName = mapping[channel.groupName] || channel.groupName;
+                return Object.assign({}, channel, { groupName: newGroupName });
+            });
+        }
+
+        function sortChannelsByGroupName(channelList, sort) {
+            return channelList
+                .map(function (channel, index) {
+                    return { channel: channel, originalIndex: index };
+                })
+                .sort(function (a, b) {
+                    var indexA = sort.indexOf(a.channel.groupName);
+                    var indexB = sort.indexOf(b.channel.groupName);
+                    indexA = indexA === -1 ? sort.length : indexA;
+                    indexB = indexB === -1 ? sort.length : indexB;
+                    return indexA - indexB || a.originalIndex - b.originalIndex;
+                })
+                .map(function (item) {
+                    return item.channel;
+                });
+        }
+
+        function transformChannel(channel) {
+            if (channel.name.includes('测试')) return undefined;
+            if (channel.name === '上海东方卫视') return { name: '东方卫视', groupName: '卫视频道' };
+            if (channel.name.includes('CCTV') || channel.name.includes('cctv') || channel.name.includes('兵器科技') || channel.name.includes('电视指南')) 
+                return { name: channel.name, groupName: '央视频道' };
+            if (channel.name.includes('卫视')) return { name: channel.name, groupName: '卫视频道' };
+            if (channel.name.includes('咪咕')) return { name: channel.name, groupName: '咪咕频道' };
+            if (channel.name.includes('求索')) return { name: channel.name, groupName: '求索频道' };
+            if (channel.name.includes('CG') || channel.name.includes('cg') || channel.name.includes('CGTNDOC') || 
+                channel.name.includes('cgtn') || channel.name.includes('CGTN') || channel.name.includes('中国教育') || 
+                channel.name.includes('重温经典') || channel.name.includes('高清臻享睛彩竞技') || 
+                channel.name.includes('睛彩青少') || channel.name.includes('探索纪录') || 
+                channel.name.includes('炫动3D') || channel.name.includes('中国天气') || 
+                channel.name.includes('中华美食') || channel.name.includes('少儿动漫') || 
+                channel.name.includes('家庭理财') || channel.name.includes('哒啵') || 
+                channel.name.includes('电子竞技') || channel.name.includes('高清娱乐') || 
+                channel.name.includes('黑莓') || channel.name.includes('华数') || 
+                channel.name.includes('精彩') || channel.name.includes('聚鲨') || 
+                channel.name.includes('漫游世界')) 
+                return { name: channel.name, groupName: '求索‧其它' };
+            if (channel.name.includes('SiTV')) return { name: channel.name, groupName: 'SiTV频道' };
+            if (channel.name.match(/北京|东方|上海|重庆|江苏|浙江|安徽|福建|江西|山东|河南|湖北|湖南|河北|山西|辽宁|吉林|黑龙江|广东|海南|四川|云南|贵州|陕西|甘肃|青海|新疆|宁夏|广西|西藏/))
+                return { name: channel.name, groupName: '地方频道' };
+            return { name: channel.name, groupName: channel.groupName };
+        }
+
+        function transformChannelList(channelList, func) {
+            return channelList.map(function (channel) {
+                var transformedChannel = func(channel);
+                return transformedChannel !== undefined ? Object.assign({}, channel, transformedChannel) : undefined;
+            }).filter(function (channel) {
+                return channel !== undefined;
+            });
+        }
+
+        function main(channelList) {
+            var groupNameMapping = {
+                '香港': '卫视频道',
+                '央视': '央视频道',
+                '求索频道': '求索‧其它',
+                '湖南频道': '地方频道',
+                'NEWTV': 'NewTV频道',
+                'IHOT': 'iHOT频道',
+                'HOT频道': 'iHOT频道',
+                '4K频道': '4K8K频道',
+                '8K频道': '4K8K频道',
+                '新聞財經': '新聞‧財經',
+                '綜合': '綜合‧其它',
+                '其他': '綜合‧其它',
+                '綜藝': '音樂‧綜藝',
+                '音樂綜藝': '音樂‧綜藝',
+                '少兒': '卡通‧兒童',
+                '動漫': '卡通‧兒童',
+                '電影': '電影‧戲劇',
+                '戲劇': '電影‧戲劇',
+                '電影戲劇': '電影‧戲劇',
+            };
+            var groupNameSort = ['4K8K频道','央视频道', '卫视频道', '地方频道', 'NewTV频道', 'iHOT频道', '咪咕频道', 'SiTV频道', '百视通频道', '求索‧其它', '綜合‧其它', '新聞‧財經', '音樂‧綜藝', '電影‧戲劇', '卡通‧兒童','生活旅遊','體育','熱門收視頻道'];
+            return sortChannelsByGroupName(transformGroupNames(transformChannelList(channelList, transformChannel), groupNameMapping), groupNameSort);
+        }
+
+        // 工具函数
+        async function fetchM3u(url) {
+            try {
+                const response = await fetch(url);
+                return await response.text();
+            } catch (e) {
+                console.error('获取失败:', url);
+                return '';
+            }
+        }
+
+        function parseM3u(text) {
+            const channels = [];
+            const lines = text.split('\n');
+            let currentChannel = {};
+            
+            lines.forEach(line => {
+                if (line.startsWith('#EXTINF')) {
+                    const params = line.match(/tvg-name="(.*?)".*group-title="(.*?)"/);
+                    currentChannel = {
+                        name: params ? params[1] : line.split(',')[1],
+                        groupName: params ? params[2] : '未分类',
+                        url: ''
+                    };
+                } else if (line.startsWith('http')) {
+                    currentChannel.url = line.trim();
+                    channels.push(currentChannel);
+                }
+            });
+            return channels;
+        }
+
+        function mergeChannels(allChannels) {
+            const merged = {};
+            allChannels.forEach(channel => {
+                const key = `${channel.name}|${channel.groupName}`;
+                if (!merged[key]) {
+                    merged[key] = {
+                        name: channel.name,
+                        groupName: channel.groupName,
+                        urls: []
+                    };
+                }
+                merged[key].urls.push(channel.url);
+            });
+            return Object.values(merged);
+        }
+
+        function generateM3u(channels) {
+            let m3u = '#EXTM3U\n';
+            channels.forEach(channel => {
+                channel.urls.forEach((url, i) => {
+                    m3u += `#EXTINF:-1 tvg-name="${channel.name}" group-title="${channel.groupName}",${channel.name}${i > 0 ? ' (线路' + (i+1) + ')' : ''}\n`;
+                    m3u += url + '\n';
+                });
+            });
+            return m3u;
+        }
+
+        // 页面交互逻辑
+        function addSource() {
+            const div = document.createElement('div');
+            div.className = 'input-group';
+            div.innerHTML = `<input type="text" placeholder="输入其他直播源地址">`;
+            document.getElementById('other-sources').appendChild(div);
+        }
+
+        async function processSources() {
+            const sources = [
+                document.getElementById('feiyang-source').value,
+                document.getElementById('itv-source').value,
+                ...Array.from(document.querySelectorAll('#other-sources input')).map(i => i.value)
+            ].filter(url => url);
+
+            const allChannels = [];
+            
+            for (const url of sources) {
+                const m3uText = await fetchM3u(url);
+                const channels = main(parseM3u(m3uText));
+                allChannels.push(...channels);
+            }
+
+            const merged = mergeChannels(allChannels);
+            const finalM3u = generateM3u(merged);
+            
+            const blob = new Blob([finalM3u], {type: 'application/vnd.apple.mpegurl'});
+            const url = URL.createObjectURL(blob);
+            
+            document.getElementById('result').textContent = finalM3u;
+            const link = document.getElementById('m3u-link');
+            link.href = url;
+            link.style.display = 'block';
+            link.download = 'merged.m3u';
+        }
+    </script>
+</body>
+</html>
