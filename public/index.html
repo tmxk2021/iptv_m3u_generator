@@ -4,169 +4,150 @@
     <meta charset="UTF-8">
     <title>直播源整合工具</title>
     <style>
-        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-        .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
-        .input-group { margin: 10px 0; }
-        input[type="text"] { width: 80%; padding: 8px; }
-        button { padding: 8px 15px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
-        .add-btn { background: #28a745; }
-        #result { white-space: pre-wrap; background: #f8f9fa; padding: 15px; }
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f0f0f0;
+        }
+        .section {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .input-group {
+            margin-bottom: 10px;
+        }
+        input[type="text"] {
+            width: 300px;
+            padding: 5px;
+            margin: 5px;
+        }
+        button {
+            padding: 5px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #preview-area {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            background-color: #f8f8f8;
+        }
     </style>
 </head>
 <body>
-    <h1>直播源整合工具</h1>
-    
     <div class="section">
-        <h3>① 肥羊直播源</h3>
+        <h2>肥羊直播源</h2>
         <div class="input-group">
             <input type="text" id="feiyang-source" placeholder="输入肥羊直播源地址">
         </div>
     </div>
 
     <div class="section">
-        <h3>② ITV项目直播源</h3>
+        <h2>ITV直播源</h2>
         <div class="input-group">
-            <input type="text" id="itv-source" placeholder="输入ITV项目地址">
+            <input type="text" id="itv-source" placeholder="输入ITV直播源地址">
         </div>
     </div>
 
     <div class="section">
-        <h3>③ 其他直播源（点击+添加）</h3>
+        <h2>其他直播源</h2>
         <div id="other-sources">
             <div class="input-group">
-                <input type="text" placeholder="输入其他直播源地址">
+                <input type="text" placeholder="添加更多直播源地址">
             </div>
         </div>
-        <button class="add-btn" onclick="addSource()">+ 添加</button>
+        <button onclick="addSourceInput()">添加更多源</button>
     </div>
 
-    <button onclick="processSources()">生成整合源</button>
-    
     <div class="section">
-        <h3>生成结果</h3>
-        <div id="result"></div>
-        <a id="m3u-link" style="display: none;" target="_blank">M3U播放地址</a>
+        <button onclick="handleGenerate()">生成整合源文件</button>
+        <button onclick="handlePreview()">预览直播源</button>
     </div>
+
+    <div id="preview-area" style="margin-top: 20px; border: 1px solid #ccc; padding: 10px;"></div>
 
     <script>
-        // 提供的转换函数
-        function transformGroupNames(channelList, mapping) {
-            return channelList.map(function (channel) {
-                var newGroupName = mapping[channel.groupName] || channel.groupName;
-                return Object.assign({}, channel, { groupName: newGroupName });
-            });
+        // 添加更多源输入框
+        function addSourceInput() {
+            const sourcesContainer = document.getElementById('other-sources');
+            const newInput = document.createElement('input');
+            newInput.type = 'text';
+            newInput.placeholder = '添加更多直播源地址';
+            sourcesContainer.appendChild(newInput);
         }
 
-        function sortChannelsByGroupName(channelList, sort) {
-            return channelList
-                .map(function (channel, index) {
-                    return { channel: channel, originalIndex: index };
-                })
-                .sort(function (a, b) {
-                    var indexA = sort.indexOf(a.channel.groupName);
-                    var indexB = sort.indexOf(b.channel.groupName);
-                    indexA = indexA === -1 ? sort.length : indexA;
-                    indexB = indexB === -1 ? sort.length : indexB;
-                    return indexA - indexB || a.originalIndex - b.originalIndex;
-                })
-                .map(function (item) {
-                    return item.channel;
-                });
-        }
+        // 处理生成整合源文件
+        async function handleGenerate() {
+            const sources = [
+                document.getElementById('feiyang-source').value,
+                document.getElementById('itv-source').value,
+                ...Array.from(document.querySelectorAll('#other-sources input')).map(i => i.value)
+            ].filter(url => url);
 
-        function transformChannel(channel) {
-            if (channel.name.includes('测试')) return undefined;
-            if (channel.name === '上海东方卫视') return { name: '东方卫视', groupName: '卫视频道' };
-            if (channel.name.includes('CCTV') || channel.name.includes('cctv') || channel.name.includes('兵器科技') || channel.name.includes('电视指南')) 
-                return { name: channel.name, groupName: '央视频道' };
-            if (channel.name.includes('卫视')) return { name: channel.name, groupName: '卫视频道' };
-            if (channel.name.includes('咪咕')) return { name: channel.name, groupName: '咪咕频道' };
-            if (channel.name.includes('求索')) return { name: channel.name, groupName: '求索频道' };
-            if (channel.name.includes('CG') || channel.name.includes('cg') || channel.name.includes('CGTNDOC') || 
-                channel.name.includes('cgtn') || channel.name.includes('CGTN') || channel.name.includes('中国教育') || 
-                channel.name.includes('重温经典') || channel.name.includes('高清臻享睛彩竞技') || 
-                channel.name.includes('睛彩青少') || channel.name.includes('探索纪录') || 
-                channel.name.includes('炫动3D') || channel.name.includes('中国天气') || 
-                channel.name.includes('中华美食') || channel.name.includes('少儿动漫') || 
-                channel.name.includes('家庭理财') || channel.name.includes('哒啵') || 
-                channel.name.includes('电子竞技') || channel.name.includes('高清娱乐') || 
-                channel.name.includes('黑莓') || channel.name.includes('华数') || 
-                channel.name.includes('精彩') || channel.name.includes('聚鲨') || 
-                channel.name.includes('漫游世界')) 
-                return { name: channel.name, groupName: '求索‧其它' };
-            if (channel.name.includes('SiTV')) return { name: channel.name, groupName: 'SiTV频道' };
-            if (channel.name.match(/北京|东方|上海|重庆|江苏|浙江|安徽|福建|江西|山东|河南|湖北|湖南|河北|山西|辽宁|吉林|黑龙江|广东|海南|四川|云南|贵州|陕西|甘肃|青海|新疆|宁夏|广西|西藏/))
-                return { name: channel.name, groupName: '地方频道' };
-            return { name: channel.name, groupName: channel.groupName };
-        }
-
-        function transformChannelList(channelList, func) {
-            return channelList.map(function (channel) {
-                var transformedChannel = func(channel);
-                return transformedChannel !== undefined ? Object.assign({}, channel, transformedChannel) : undefined;
-            }).filter(function (channel) {
-                return channel !== undefined;
-            });
-        }
-
-        function main(channelList) {
-            var groupNameMapping = {
-                '香港': '卫视频道',
-                '央视': '央视频道',
-                '求索频道': '求索‧其它',
-                '湖南频道': '地方频道',
-                'NEWTV': 'NewTV频道',
-                'IHOT': 'iHOT频道',
-                'HOT频道': 'iHOT频道',
-                '4K频道': '4K8K频道',
-                '8K频道': '4K8K频道',
-                '新聞財經': '新聞‧財經',
-                '綜合': '綜合‧其它',
-                '其他': '綜合‧其它',
-                '綜藝': '音樂‧綜藝',
-                '音樂綜藝': '音樂‧綜藝',
-                '少兒': '卡通‧兒童',
-                '動漫': '卡通‧兒童',
-                '電影': '電影‧戲劇',
-                '戲劇': '電影‧戲劇',
-                '電影戲劇': '電影‧戲劇',
-            };
-            var groupNameSort = ['4K8K频道','央视频道', '卫视频道', '地方频道', 'NewTV频道', 'iHOT频道', '咪咕频道', 'SiTV频道', '百视通频道', '求索‧其它', '綜合‧其它', '新聞‧財經', '音樂‧綜藝', '電影‧戲劇', '卡通‧兒童','生活旅遊','體育','熱門收視頻道'];
-            return sortChannelsByGroupName(transformGroupNames(transformChannelList(channelList, transformChannel), groupNameMapping), groupNameSort);
-        }
-
-        // 工具函数
-        async function fetchM3u(url) {
             try {
-                const response = await fetch(url);
-                return await response.text();
+                const allChannels = [];
+                for (const url of sources) {
+                    const response = await fetch(url);
+                    const text = await response.text();
+                    allChannels.push(...parseM3u(text));
+                }
+
+                const mergedChannels = mergeChannels(allChannels);
+                const m3uContent = generateM3u(mergedChannels);
+
+                const blob = new Blob([m3uContent], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'merged_channels.m3u';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
             } catch (e) {
-                console.error('获取失败:', url);
-                return '';
+                alert('生成失败: ' + e.message);
             }
         }
 
+        // 解析m3u文件
         function parseM3u(text) {
-            const channels = [];
             const lines = text.split('\n');
-            let currentChannel = {};
-            
+            const channels = [];
+            let currentChannel = null;
+
             lines.forEach(line => {
                 if (line.startsWith('#EXTINF')) {
-                    const params = line.match(/tvg-name="(.*?)".*group-title="(.*?)"/);
                     currentChannel = {
-                        name: params ? params[1] : line.split(',')[1],
-                        groupName: params ? params[2] : '未分类',
+                        name: '',
+                        groupName: '未分类',
                         url: ''
                     };
+                    const params = line.match(/tvg-name="(.*?)"(.*?)group-title="(.*?)"|tvg-name="(.*?)"(?!.*group-title)/);
+                    if (params) {
+                        currentChannel.name = params[1] || params[4];
+                        currentChannel.groupName = params[3] || currentChannel.groupName;
+                    }
                 } else if (line.startsWith('http')) {
-                    currentChannel.url = line.trim();
-                    channels.push(currentChannel);
+                    if (currentChannel) {
+                        currentChannel.url = line.trim();
+                        channels.push(currentChannel);
+                        currentChannel = null;
+                    }
                 }
             });
+
             return channels;
         }
 
+        // 合并相同频道
         function mergeChannels(allChannels) {
             const merged = {};
             allChannels.forEach(channel => {
@@ -183,51 +164,59 @@
             return Object.values(merged);
         }
 
+        // 生成m3u内容
         function generateM3u(channels) {
             let m3u = '#EXTM3U\n';
             channels.forEach(channel => {
                 channel.urls.forEach((url, i) => {
-                    m3u += `#EXTINF:-1 tvg-name="${channel.name}" group-title="${channel.groupName}",${channel.name}${i > 0 ? ' (线路' + (i+1) + ')' : ''}\n`;
+                    m3u += `#EXTINF:-1 tvg-name="${channel.name}" group-title="${channel.groupName}",${channel.name}${i > 0 ? ' (线路' + (i + 1) + ')' : ''}\n`;
                     m3u += url + '\n';
                 });
             });
             return m3u;
         }
 
-        // 页面交互逻辑
-        function addSource() {
-            const div = document.createElement('div');
-            div.className = 'input-group';
-            div.innerHTML = `<input type="text" placeholder="输入其他直播源地址">`;
-            document.getElementById('other-sources').appendChild(div);
-        }
-
-        async function processSources() {
+        // 预览直播源功能
+        async function handlePreview() {
             const sources = [
                 document.getElementById('feiyang-source').value,
                 document.getElementById('itv-source').value,
                 ...Array.from(document.querySelectorAll('#other-sources input')).map(i => i.value)
             ].filter(url => url);
 
-            const allChannels = [];
-            
-            for (const url of sources) {
-                const m3uText = await fetchM3u(url);
-                const channels = main(parseM3u(m3uText));
-                allChannels.push(...channels);
-            }
+            const previewArea = document.getElementById('preview-area');
+            previewArea.innerHTML = '<div>正在加载预览...</div>';
 
-            const merged = mergeChannels(allChannels);
-            const finalM3u = generateM3u(merged);
-            
-            const blob = new Blob([finalM3u], {type: 'application/vnd.apple.mpegurl'});
-            const url = URL.createObjectURL(blob);
-            
-            document.getElementById('result').textContent = finalM3u;
-            const link = document.getElementById('m3u-link');
-            link.href = url;
-            link.style.display = 'block';
-            link.download = 'merged.m3u';
+            try {
+                const results = await Promise.all(sources.map(async (url, index) => {
+                    try {
+                        const response = await fetch(url);
+                        const text = await response.text();
+                        return {
+                            success: true,
+                            source: `源${index + 1} (${url})`,
+                            content: text.slice(0, 500) + (text.length > 500 ? '...' : '')
+                        };
+                    } catch (e) {
+                        return {
+                            success: false,
+                            source: `源${index + 1} (${url})`,
+                            error: e.message
+                        };
+                    }
+                }));
+
+                previewArea.innerHTML = results.map(result => `
+                    <div style="margin: 10px 0; padding: 10px; background: ${result.success ? '#e8f5e9' : '#ffebee'}">
+                        <strong>${result.source}</strong>
+                        ${result.success ? 
+                            `<pre style="white-space: pre-wrap">${result.content}</pre>` : 
+                            `<div style="color: red">错误: ${result.error}</div>`}
+                    </div>
+                `).join('');
+            } catch (e) {
+                previewArea.innerHTML = `<div style="color: red">预览失败: ${e.message}</div>`;
+            }
         }
     </script>
 </body>
