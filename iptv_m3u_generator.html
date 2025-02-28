@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>直播源整合</title>
+    <script>
+        async function fetchM3U(url) {
+            try {
+                let response = await fetch(url);
+                return await response.text();
+            } catch (error) {
+                alert("无法获取M3U文件: " + error);
+                return "";
+            }
+        }
+
+        function parseM3U(m3uContent) {
+            let lines = m3uContent.split("\n");
+            let channels = [];
+            let currentChannel = {};
+
+            lines.forEach(line => {
+                line = line.trim();
+                if (line.startsWith("#EXTINF")) {
+                    let nameMatch = line.match(/,(.+)/);
+                    if (nameMatch) {
+                        currentChannel.name = nameMatch[1];
+                    }
+                } else if (line && !line.startsWith("#")) {
+                    currentChannel.url = line;
+                    channels.push(currentChannel);
+                    currentChannel = {};
+                }
+            });
+            return channels;
+        }
+
+        function transformChannels(channels) {
+            let groups = {
+                "央视": [], "卫视": [], "地方频道": [], "港台": [], "4K8K": [], "其他": []
+            };
+            
+            channels.forEach(channel => {
+                if (channel.name.includes("CCTV")) {
+                    groups["央视"].push(channel);
+                } else if (channel.name.includes("卫视")) {
+                    groups["卫视"].push(channel);
+                } else if (channel.name.includes("香港") || channel.name.includes("台湾")) {
+                    groups["港台"].push(channel);
+                } else if (channel.name.includes("4K") || channel.name.includes("8K")) {
+                    groups["4K8K"].push(channel);
+                } else {
+                    groups["其他"].push(channel);
+                }
+            });
+            return groups;
+        }
+
+        function generateM3U(groups) {
+            let output = "#EXTM3U\n";
+            Object.keys(groups).forEach(group => {
+                groups[group].forEach(channel => {
+                    output += `#EXTINF:-1,${channel.name}\n${channel.url}\n`;
+                });
+            });
+            return output;
+        }
+
+        async function processM3U() {
+            let url = document.getElementById("m3uUrl").value;
+            if (!url) {
+                alert("请输入直播源地址");
+                return;
+            }
+            let content = await fetchM3U(url);
+            let channels = parseM3U(content);
+            let groups = transformChannels(channels);
+            let newM3U = generateM3U(groups);
+            document.getElementById("output").value = newM3U;
+        }
+    </script>
+</head>
+<body>
+    <h1>直播源整合</h1>
+    <input type="text" id="m3uUrl" placeholder="请输入M3U地址">
+    <button onclick="processM3U()">获取并整理</button>
+    <textarea id="output" rows="20" cols="80" placeholder="生成的M3U文件将在这里显示"></textarea>
+</body>
+</html>
